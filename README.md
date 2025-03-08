@@ -1,4 +1,4 @@
-# Face Recognition Attendance System
+# iDetectFace - Face Recognition Attendance System
 
 A Python-based facial recognition system that automatically takes attendance and stores records in a CSV file. This application uses computer vision to identify registered individuals and mark their attendance with timestamps.
 
@@ -29,8 +29,8 @@ A Python-based facial recognition system that automatically takes attendance and
 
 1. Clone this repository:
    ```
-   git clone https://github.com/yourusername/face-recognition-attendance.git
-   cd face-recognition-attendance
+   git clone https://github.com/yourusername/iDetectFace.git
+   cd iDetectFace
    ```
 
 2. Install required dependencies:
@@ -118,7 +118,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 👥 Contributions
 
-Contributions, issues, and feature requests are welcome! Feel free to check [issues page](https://github.com/yourusername/face-recognition-attendance/issues).
+Contributions, issues, and feature requests are welcome! Feel free to check [issues page](https://github.com/yourusername/iDetectFace/issues).
 
 ## 🙏 Acknowledgements
 
