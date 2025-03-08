@@ -14,7 +14,7 @@ A Python-based facial recognition system that automatically takes attendance and
 
 ## 🖼️ Screenshots
 
-(Add screenshots of your application here)
+(Will be added)
 
 ## 🔧 Prerequisites
 
@@ -29,7 +29,7 @@ A Python-based facial recognition system that automatically takes attendance and
 
 1. Clone this repository:
    ```
-   git clone https://github.com/yourusername/iDetectFace.git
+   git clone https://github.com/pial-paul/iDetectFace.git
    cd iDetectFace
    ```
 
