@@ -44,6 +44,14 @@ class RegisterTests(unittest.TestCase):
         AttendanceLog(self.path).mark("Demo B", DAY)
         self.assertFalse(self.log.mark("Demo B", DAY))
 
+    def test_same_identity_is_recorded_again_after_register_replacement(self):
+        self.log.mark("Demo A", DAY)
+        fresh = self.path.with_suffix(".new")
+        fresh.write_bytes(b"Name,Date,Time\r\n")
+        fresh.replace(self.path)
+        self.assertTrue(self.log.mark("Demo A", DAY))
+        self.assertEqual(len(self.log.records()), 1)
+
     def test_processes_share_one_daily_mark(self):
         with ProcessPoolExecutor(3, mp_context=multiprocessing.get_context("spawn")) as pool:
             self.assertEqual(sum(pool.map(write_in_worker, [self.path] * 12)), 1)
@@ -75,6 +83,34 @@ class RegisterTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 self.log.mark("Demo", DAY)
         self.assertTrue(self.log.mark("Demo", DAY))
+
+    def test_sync_failure_rolls_back_both_first_and_existing_registers(self):
+        with (
+            patch("idetectface.attendance.os.fsync", side_effect=OSError("write failed")),
+            self.assertRaises(OSError),
+        ):
+            self.log.mark("A", DAY)
+        self.assertFalse(self.path.exists())
+        self.log.mark("A", DAY)
+        before = self.path.read_bytes()
+        with (
+            patch("idetectface.attendance.os.fsync", side_effect=OSError("write failed")),
+            self.assertRaises(OSError),
+        ):
+            self.log.mark("B", DAY)
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertTrue(self.log.mark("B", DAY))
+
+    def test_register_rejects_unsafe_historical_label(self):
+        raw = "Name,Date,Time\n=demo,2025-03-09,09:30:00\n"
+        self.path.write_text(raw, encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "line 2"):
+            self.log.records()
+        self.assertEqual(self.path.read_text(encoding="utf-8"), raw)
+
+    def test_unicode_filename_fits_filesystem_byte_limit(self):
+        with self.assertRaises(ValueError):
+            enrollment_stem("𠀀" * 80)
 
     def test_missing_report_is_empty(self):
         self.assertEqual(self.log.records(date.today()), [])

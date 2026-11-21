@@ -38,6 +38,13 @@ class VisionTests(unittest.TestCase):
     def test_native_detector_on_empty_image(self):
         self.assertEqual(self.gallery.recognize(self.frame, 0.5), [])
 
+    def test_native_model_assets_generate_a_finite_descriptor(self):
+        box = (15, 105, 95, 25)
+        self.assertEqual(len(vision.faces.face_landmarks(self.frame, box)), 5)
+        (descriptor,) = vision.faces.face_encodings(self.frame, [box])
+        self.assertEqual(descriptor.shape, (128,))
+        self.assertTrue(np.isfinite(descriptor).all())
+
     def test_rotated_color_channels_and_rescaled_boxes(self):
         self.frame[:, :, 0] = 250
         with (
@@ -55,7 +62,7 @@ class VisionTests(unittest.TestCase):
             (self.directory / name).touch()
         with (
             patch.object(
-                vision.faces, "load_image_file", side_effect=[OSError("broken")] + [self.frame] * 3
+                vision, "read_image", side_effect=[OSError("broken")] + [(self.frame, b"id")] * 3
             ),
             patch.object(vision.faces, "face_locations", side_effect=[[], [1, 2], [1]]),
             patch.object(vision.faces, "face_encodings", return_value=[self.vector]),
@@ -98,6 +105,7 @@ class VisionTests(unittest.TestCase):
         stack.enter_context(patch.object(vision.cv2, "VideoCapture", return_value=cap))
         for method in ("namedWindow", "imshow", "destroyAllWindows"):
             stack.enter_context(patch.object(vision.cv2, method))
+        stack.enter_context(patch.object(vision.cv2, "getWindowProperty", return_value=1.0))
         stack.enter_context(patch.object(vision.cv2, "waitKey", side_effect=keys))
         return cap
 
@@ -106,13 +114,13 @@ class VisionTests(unittest.TestCase):
         with ExitStack() as stack:
             cap = self.fake_display(stack, [32, 32])
             stack.enter_context(
-                patch.object(vision.faces, "face_locations", side_effect=[[box, box], [box]])
+                patch.object(vision.faces, "face_locations", side_effect=[[box, box], [box], [box]])
             )
             stack.enter_context(patch.object(vision.faces, "face_landmarks", return_value=[]))
             vision.enroll(self.directory, 0, "Demo A")
         self.assertEqual(cap.read.call_count, 2)
         cap.release.assert_called_once()
-        saved = vision.faces.load_image_file(str(self.directory / "demo_a.jpg"))
+        saved, _ = vision.read_image(self.directory / "demo_a.jpg")
         self.assertTrue(np.all(saved == 0), "preview annotations leaked into the saved portrait")
 
     def test_cadence_unknown_rejection_and_daily_log(self):
@@ -183,8 +191,53 @@ class VisionTests(unittest.TestCase):
         (self.directory / "probe.png").write_bytes((gallery_dir / "demo.png").read_bytes())
         manifest = self.directory / "probes.csv"
         manifest.write_text("image,expected\nprobe.png,demo\n", encoding="utf-8")
+        _, digest = vision.read_image(gallery_dir / "demo.png")
+        gallery = vision.Gallery(["demo"], [self.vector], [digest])
         with (
-            patch.object(vision.Gallery, "load", return_value=self.gallery),
+            patch.object(vision.Gallery, "load", return_value=gallery),
             self.assertRaisesRegex(ValueError, "reuses an enrollment"),
         ):
             evaluate(gallery_dir, manifest, 0.5)
+
+    def test_tied_identities_are_unknown(self):
+        ambiguous = vision.Gallery(["one", "two"], [self.vector, self.vector])
+        self.assertEqual(ambiguous.nearest(self.vector, 0.5), (None, 0.0))
+        same_id = vision.Gallery(["one", "ONE"], [self.vector, self.vector])
+        self.assertEqual(same_id.nearest(self.vector, 0.5), ("one", 0.0))
+        self.assertIsNone(vision.Gallery([], []).nearest(self.vector, 0.5)[0])
+
+    def test_unusable_compressed_portrait_is_not_saved(self):
+        with self.assertRaisesRegex(ValueError, "saved JPEG"):
+            vision.save_portrait(self.directory, "demo", self.frame)
+        self.assertEqual(vision.images(self.directory), [])
+
+    def test_closing_preview_releases_camera_without_enrolling(self):
+        with ExitStack() as stack:
+            cap = self.fake_display(stack, [0])
+            stack.enter_context(patch.object(vision.cv2, "getWindowProperty", return_value=0))
+            vision.enroll(self.directory, 0, "demo")
+        cap.release.assert_called_once()
+        self.assertEqual(vision.images(self.directory), [])
+
+    def test_decoding_enforces_pixel_and_file_limits(self):
+        from idetectface import images
+
+        path = self.directory / "image.png"
+        vision.cv2.imwrite(str(path), self.frame)
+        with patch.object(images, "MAX_PIXELS", 10), self.assertRaises(ValueError):
+            images.read_image(path)
+        with patch.object(images, "MAX_BYTES", 10), self.assertRaises(ValueError):
+            images.read_image(path)
+
+    def test_manifest_stays_within_its_dataset(self):
+        folder = self.directory / "dataset"
+        folder.mkdir()
+        manifest = folder / "probes.csv"
+        for name in ("../another-dataset.png", str(self.directory / "outside.png")):
+            manifest.write_text(f"image,expected\n{name},@unknown\n", encoding="utf-8")
+            with (
+                self.subTest(name=name),
+                patch.object(vision.Gallery, "load", return_value=self.gallery),
+                self.assertRaisesRegex(ValueError, "manifest folder"),
+            ):
+                evaluate(folder, manifest, 0.5)

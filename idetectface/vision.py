@@ -8,14 +8,12 @@ from tempfile import NamedTemporaryFile
 from typing import NamedTuple, Optional
 
 import cv2
-import face_recognition as faces
 import numpy as np
 from filelock import FileLock
-from PIL import Image
 
-from .identity import enrollment_stem, identity_key
-
-IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
+from . import recognition as faces
+from .identity import enrollment_stem, identity_key, validate_label
+from .images import IMAGE_SUFFIXES, read_image
 
 
 def images(directory):
@@ -31,36 +29,44 @@ class Match(NamedTuple):
 
 
 class Gallery:
-    def __init__(self, names, encodings):
+    def __init__(self, names, encodings, fingerprints=()):
         self.names = tuple(names)
         self.encodings = np.asarray(encodings, dtype=float)
+        self.fingerprints = frozenset(fingerprints)
 
     @classmethod
     def load(cls, directory: Path):
-        names, encodings = [], []
+        names, encodings, fingerprints = [], [], set()
         directory.mkdir(parents=True, exist_ok=True)
         for path in images(directory):
             name = path.stem.replace("_", " ")
             try:
-                if not name.strip() or name.lstrip()[0] in "=+-@" or not name.isprintable():
-                    raise ValueError("unsafe identity label")
-                rgb = faces.load_image_file(str(path))
+                validate_label(name)
+                rgb, digest = read_image(path)
                 locations = faces.face_locations(rgb)
                 if len(locations) != 1:
                     raise ValueError(f"expected one face, found {len(locations)}")
                 (vector,) = faces.face_encodings(rgb, locations)
-            except (OSError, RuntimeError, ValueError, Image.DecompressionBombError) as error:
+            except (OSError, ValueError) as error:
                 print(f"Skipping {path.name}: {error}")
                 continue
             names.append(name)
             encodings.append(vector)
-        return cls(names, encodings)
+            fingerprints.add(digest)
+        return cls(names, encodings, fingerprints)
 
     def nearest(self, vector, threshold):
+        if not self.names:
+            return None, float("inf")
         distances = faces.face_distance(self.encodings, vector)
         index = int(np.argmin(distances))
         distance = float(distances[index])
-        return (self.names[index] if distance < threshold else None), distance
+        if not distance < threshold:
+            return None, distance
+        tied = np.flatnonzero(distances == distance)
+        if len(tied) > 1 and len({identity_key(self.names[i]) for i in tied}) > 1:
+            return None, distance
+        return self.names[index], distance
 
     def recognize(self, frame, threshold):
         small = cv2.resize(frame, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
@@ -106,6 +112,18 @@ def label(frame, text, point, color=(255, 255, 255)):
     cv2.putText(frame, text, point, cv2.FONT_HERSHEY_DUPLEX, 0.55, color, 1, cv2.LINE_AA)
 
 
+def window_closed(title):
+    # Wayland does not expose HighGUI window properties. The quit keys still work.
+    if cv2.currentUIFramework() == "WAYLAND":
+        return False
+    try:
+        return cv2.getWindowProperty(title, cv2.WND_PROP_VISIBLE) < 1
+    except cv2.error as error:
+        if error.code == cv2.Error.StsNullPtr:  # Win32 removes a closed window immediately.
+            return True
+        raise
+
+
 def save_portrait(directory: Path, name: str, frame):
     stem = enrollment_stem(name)
     directory.mkdir(parents=True, exist_ok=True)
@@ -117,10 +135,17 @@ def save_portrait(directory: Path, name: str, frame):
         ok, jpeg = cv2.imencode(".jpg", frame)
         if not ok:
             raise OSError("OpenCV could not encode the portrait.")
-        with NamedTemporaryFile(dir=directory, suffix=".tmp", delete=False) as temp:
-            temp_path = Path(temp.name)
+        stored = cv2.imdecode(jpeg, cv2.IMREAD_COLOR)
+        if (
+            stored is None
+            or len(faces.face_locations(cv2.cvtColor(stored, cv2.COLOR_BGR2RGB))) != 1
+        ):
+            raise ValueError("The saved JPEG must contain one detectable face. Please retry.")
+        temp = NamedTemporaryFile(dir=directory, suffix=".tmp", delete=False)
+        temp_path = Path(temp.name)
         try:
-            temp_path.write_bytes(jpeg.tobytes())
+            with temp:
+                temp.write(jpeg.tobytes())
             os.replace(temp_path, path)
         finally:
             temp_path.unlink(missing_ok=True)
@@ -138,15 +163,13 @@ def enroll(directory, index, name):
             for top, right, bottom, left in boxes:
                 cv2.rectangle(preview, (left, top), (right, bottom), (70, 190, 110), 2)
             if len(boxes) == 1:
-                for landmarks in faces.face_landmarks(rgb, boxes, model="small"):
-                    for points in landmarks.values():
-                        for point in points:
-                            cv2.circle(preview, point, 1, (30, 100, 255), -1)
+                for point in faces.face_landmarks(rgb, boxes[0]):
+                    cv2.circle(preview, point, 1, (30, 100, 255), -1)
             prompt = "SPACE to capture" if len(boxes) == 1 else "Show exactly one face"
             label(preview, prompt + " | ESC to cancel", (10, 25))
             cv2.imshow("Add New Face", preview)
             key = cv2.waitKey(1) & 0xFF
-            if key == 27:
+            if key == 27 or window_closed("Add New Face"):
                 return
             if key == 32 and len(boxes) == 1:
                 path = save_portrait(directory, name, frame)
@@ -185,4 +208,6 @@ def run(directory, log, index, threshold, every):
             label(frame, f"{now:%Y-%m-%d %H:%M:%S} | q to finish", (10, frame.shape[0] - 12))
             cv2.imshow("Face Recognition Attendance", frame)
             if cv2.waitKey(1) & 0xFF == ord("q"):
+                return
+            if window_closed("Face Recognition Attendance"):
                 return

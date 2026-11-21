@@ -2,15 +2,14 @@
 
 import argparse
 import csv
-import hashlib
 from collections import Counter
 from pathlib import Path
 
 import cv2
-import numpy as np
 
 from idetectface.identity import identity_key
-from idetectface.vision import Gallery, images
+from idetectface.images import read_image
+from idetectface.vision import Gallery
 
 UNKNOWN = "@unknown"
 
@@ -22,7 +21,8 @@ def evaluate(directory, manifest, threshold):
     enrolled = {identity_key(name) for name in gallery.names}
     if not enrolled:
         raise ValueError("The gallery needs a usable enrollment image.")
-    seen = {hashlib.sha256(path.read_bytes()).digest() for path in images(directory)}
+    seen = set(gallery.fingerprints)
+    root = manifest.resolve().parent
     counts = Counter()
     with manifest.open(encoding="utf-8-sig", newline="") as stream:
         rows = csv.reader(stream, strict=True)
@@ -37,16 +37,19 @@ def evaluate(directory, manifest, threshold):
                 raise ValueError(
                     f"Expected identity at line {rows.line_num} is absent from the loaded gallery."
                 )
-            raw = (manifest.parent / filename).read_bytes()
-            digest = hashlib.sha256(raw).digest()
+            relative = Path(filename)
+            if relative.anchor or ".." in relative.parts:
+                raise ValueError(
+                    f"Line {rows.line_num} must name a file inside the manifest folder."
+                )
+            path = root / relative
+            if not path.resolve().is_relative_to(root):
+                raise ValueError(f"Line {rows.line_num} resolves outside the manifest folder.")
+            rgb, digest = read_image(path)
             if digest in seen:
                 raise ValueError(f"Line {rows.line_num} reuses an enrollment or probe file.")
             seen.add(digest)
-            frame = (
-                cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR) if raw else None
-            )
-            if frame is None or min(frame.shape[:2]) < 2:
-                raise ValueError(f"Unreadable probe image at line {rows.line_num}.")
+            frame = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
             matches = gallery.recognize(frame, threshold)
             cohort = "unknown" if expected == UNKNOWN else "known"
             counts[cohort] += 1

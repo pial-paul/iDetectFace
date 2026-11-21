@@ -8,6 +8,12 @@ def identity_key(name: str) -> str:
     return unicodedata.normalize("NFC", " ".join(name.split()).casefold())
 
 
+def validate_label(name: str) -> None:
+    trimmed = unicodedata.normalize("NFKC", name).strip()
+    if not trimmed or trimmed[0] in "=+-@" or not name.isprintable():
+        raise ValueError("Unsafe or empty attendance name.")
+
+
 def enrollment_stem(name: str) -> str:
     name = unicodedata.normalize("NFC", name.strip())
     if not name or len(name) > 80 or not name[0].isalnum():
@@ -16,6 +22,6 @@ def enrollment_stem(name: str) -> str:
         if not (ch.isalnum() or unicodedata.category(ch).startswith("M") or ch in " '-_"):
             raise ValueError("Use letters, numbers, spaces, hyphens, underscores or apostrophes.")
     stem = "_".join(name.lower().replace("_", " ").split())
-    if PureWindowsPath(stem + ".jpg").is_reserved():
+    if len((stem + ".jpg").encode("utf-8")) > 255 or PureWindowsPath(stem + ".jpg").is_reserved():
         raise ValueError("Choose a name that is safe as a filename on Windows.")
     return stem
