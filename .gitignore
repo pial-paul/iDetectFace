@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.venv/
+.ruff_cache/
+known_faces/
+attendance.csv
+attendance.csv.lock
+.local-data/

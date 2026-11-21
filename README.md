@@ -1,126 +1,84 @@
-# iDetectFace - Face Recognition Attendance System
+# iDetectFace
 
-A Python-based facial recognition system that automatically takes attendance and stores records in a CSV file. This application uses computer vision to identify registered individuals and mark their attendance with timestamps.
+A local webcam attendance system for a supervised lab or workshop. An organizer enrolls a participant with one portrait. When the camera recognizes them, the register keeps the timestamp of their first accepted sighting that day. Reappearing later leaves the original check-in time intact.
 
-## 📋 Features
+**Python · OpenCV · dlib · face_recognition · NumPy**
 
-- **Automated Attendance**: Recognize faces and mark attendance automatically
-- **User-Friendly Interface**: Simple menu-driven console interface
-- **Real-Time Face Detection**: Visual feedback with bounding boxes and confidence scores
-- **CSV Storage**: Attendance records stored in standard CSV format for easy export
-- **One-Time Daily Attendance**: Each person is only marked once per day
-- **Visual Feedback**: Shows recognition status and confidence percentages
-- **Face Registration**: Simple process to add new faces to the system
+## Follow a check-in
 
-## 🖼️ Screenshots
+```mermaid
+flowchart LR
+    P["Enrollment portrait"] --> G["One face per image<br/>128-D gallery vectors"]
+    C["Webcam"] --> F["Every Nth frame<br/>half-size RGB"]
+    F --> D["Detect faces<br/>encode each face"]
+    G --> M["Nearest Euclidean distance"]
+    D --> M
+    M -->|"Below threshold"| A["Check identity + local date<br/>under a file lock"]
+    M -->|"Outside threshold"| U["Show Unknown"]
+    A -->|"First sighting"| W["Append Name,Date,Time"]
+    A -->|"Already present"| S["Show present"]
+    W --> R["Daily and historical reports"]
+```
 
-(Will be added)
+The camera processes every second frame by default and reuses the last boxes between observations. The number beside a face is its embedding distance. Smaller values indicate a closer match. The default acceptance rule is `distance < 0.5`. [Recognition API](https://face-recognition.readthedocs.io/en/latest/face_recognition.html)
 
-## 🔧 Prerequisites
+## Run it locally
 
-- Python 3.6 or higher
-- Webcam or built-in camera
-- The following Python packages:
-  - OpenCV
-  - face_recognition
-  - NumPy
+1. Open a terminal in the project checkout. Create a virtual environment with a 64-bit Python interpreter. The clean Windows installation below was verified with Python 3.9.9. The CI workflow targets Python 3.11.
 
-## ⚙️ Installation
-
-1. Clone this repository:
-   ```
-   git clone https://github.com/pial-paul/iDetectFace.git
-   cd iDetectFace
+   ```sh
+   python -m venv .venv
    ```
 
-2. Install required dependencies:
-   ```
-   pip install opencv-python face_recognition numpy
-   ```
+2. Activate it with `.\.venv\Scripts\Activate.ps1` in PowerShell or `source .venv/bin/activate` on Linux and macOS. Install the desktop dependencies.
 
-   **Note**: The `face_recognition` library requires `dlib`, which might need additional setup:
-   ```
-   pip install cmake
-   pip install dlib
+   ```sh
+   python -m pip install --upgrade pip
+   python -m pip install -r requirements.txt
+   python -m pip check
    ```
 
-   On Windows, you might need to install Visual C++ Build Tools.
+   If pip needs to build dlib, install CMake and a C++ compiler first. On Windows, use Visual Studio Build Tools with the **Desktop development with C++** workload. Use one OpenCV wheel per environment. A headless wheel omits the preview windows. [dlib build instructions](https://dlib.net/compile.html) · [OpenCV wheel selection](https://pypi.org/project/opencv-python/)
 
-## 🚀 Usage
+3. Start a private demo register. Choose **2** to enroll a consenting participant under a unique ID such as `demo-01`. With exactly one face in view, press **Space** to save or **Esc** to cancel. Choose **1** to start attendance and press **q** in the preview to finish. Choose **3** to view today, a specific day, or all days.
 
-1. **Run the program**:
+   ```sh
+   python opencv_attendance.py --data-dir .local-data
    ```
-   python face_attendance.py
-   ```
 
-2. **Main Menu Options**:
-   - **Start Face Recognition Attendance**: Begin the recognition process
-   - **Add New Face**: Register a new person to the system
-   - **View Today's Attendance**: Check who's been marked present today
-   - **Exit**: Close the application
+The original `python opencv_attendance.py` menu still uses `known_faces/` and `attendance.csv` in the current directory. Point `--data-dir` at an existing register to use its original `Name,Date,Time` rows and JPG, JPEG or PNG enrollment files. New registers create the CSV on the first check-in.
 
-### Adding a New Face
+### Run individual operations
 
-1. Select option 2 from the main menu
-2. Enter the person's name
-3. Position your face in front of the camera
-4. Wait for the green box and "Face Detected" message
-5. Press SPACE to capture the face
-6. Press ESC to cancel
+```sh
+python opencv_attendance.py --data-dir .local-data enroll demo-01
+python opencv_attendance.py --data-dir .local-data --camera 0 --every 2 --threshold 0.5 run
+python opencv_attendance.py --data-dir .local-data records
+python opencv_attendance.py --data-dir .local-data records --date 2025-03-09
+python opencv_attendance.py --data-dir .local-data records --all
+```
 
-### Taking Attendance
+## What the benchmark shows
 
-1. Select option 1 from the main menu
-2. The system will automatically detect and recognize faces
-3. When a registered person is detected, their name will be displayed with a confidence percentage
-4. Attendance is automatically marked (indicated by a ✓ symbol)
-5. Press 'q' to quit and return to the main menu
+![Duplicate lookup times at three CSV sizes. At 100 rows the original scan is faster. At 10,000 rows the scan takes 4.194 ms and the daily index takes 0.267 ms.](docs/duplicate-check.png)
 
-## 📁 File Structure
+At 10,000 synthetic rows, median time per repeated check fell from **4.194 ms to 0.267 ms** on one Windows laptop. At 100 rows, the file lock made the indexed path slower. The benchmark isolates a warm lookup with a match in the last row. Camera capture, detection and first-time writes are outside the timing. [Method, exact values and reproduction steps](docs/evaluation.md)
 
-- `face_attendance.py`: Main application file
-- `known_faces/`: Directory containing saved face images
-- `attendance.csv`: CSV file storing attendance records
+```sh
+python -m unittest discover -s tests -v
+python -m benchmarks.duplicate_lookup
+```
 
-## 🔍 How It Works
+Both commands run without a webcam or personal images. The tests exercise midnight rollover, competing writers, enrollment collisions, the matching threshold, unknown faces and camera failures. The evaluation guide also includes a command for scoring held-out portraits.
 
-1. **Face Detection**: The system uses the `face_recognition` library to detect faces in camera frames
-2. **Face Encoding**: Each detected face is converted to a mathematical representation (encoding)
-3. **Face Comparison**: New face encodings are compared against known faces
-4. **Attendance Marking**: When a match is found, attendance is recorded with timestamp
-5. **Data Storage**: All records are saved to a CSV file for easy access and analysis
+## Use in a supervised pilot
 
-## ⚠️ Limitations
+Use unique participant IDs to distinguish people with the same name. Offer a manual check-in and let an organizer correct missed or mistaken entries. A photograph can trigger a match. Classroom accuracy, liveness and demographic performance have yet to be validated. Recognition quality depends on capture conditions and the enrolled population.
 
-- Requires good lighting conditions for optimal recognition
-- Performance depends on your computer's processing power
-- May struggle with side profiles or partially occluded faces
-- Recognition accuracy can be affected by facial hair, glasses, or other changes in appearance
+Portraits and the CSV are ordinary local files. Restrict access to the data directory and agree on a deletion date with participants. Publish aggregate results and synthetic examples. Earlier Git revisions include demonstration portraits and attendance rows. [Engineering decisions and operating limits](docs/engineering.md)
 
-## 🛠️ Troubleshooting
+## Project guide
 
-- **Camera not working**: Ensure no other application is using your camera
-- **Slow performance**: Lower the camera resolution in the code or increase the `process_every_n_frames` value
-- **Recognition issues**: Try re-registering the face under better lighting conditions
-- **Installation problems**: Check if all dependencies are correctly installed
-
-## 🔜 Future Improvements
-
-- GUI interface
-- Database integration
-- Multiple camera support
-- Attendance reports and analytics
-- Face liveness detection
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 👥 Contributions
-
-Contributions, issues, and feature requests are welcome! Feel free to check [issues page](https://github.com/yourusername/iDetectFace/issues).
-
-## 🙏 Acknowledgements
-
-- [face_recognition](https://github.com/ageitgey/face_recognition) library
-- [OpenCV](https://opencv.org/) library
+- [Engineering review](docs/engineering.md) covers the original defects, design changes, failure handling and next implementation priorities.
+- [Evaluation protocol](docs/evaluation.md) covers storage latency, recognition errors and a physical-camera acceptance check.
+- [Portfolio descriptions](docs/portfolio.md) contains résumé bullets for software engineering and research applications.
