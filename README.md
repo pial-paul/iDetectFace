@@ -4,6 +4,8 @@ A local webcam attendance system for a supervised lab or workshop. An organizer 
 
 **Python 3.11 · OpenCV · dlib · NumPy · local CSV**
 
+For a public portfolio demo with browser camera capture and CSV download, follow the [free Streamlit deployment guide](demo/README.md).
+
 ## Follow a check-in
 
 ```mermaid
