@@ -4,7 +4,15 @@ A local webcam attendance system for a supervised lab or workshop. An organizer 
 
 **Python 3.11 · OpenCV · dlib · NumPy · local CSV**
 
-Try the [live photo check-in](https://idetectface.streamlit.app/) in English or বাংলা. Give it one photo of yourself and a second photo to check in, then download your attendance. To host your own copy, follow the [free Streamlit deployment guide](demo/README.md).
+## Try it in your browser
+
+**[Open the live iDetectFace demo →](https://idetectface.streamlit.app/)** Choose English or বাংলা. All you need is a camera or two different photos of yourself.
+
+1. Agree to photo processing, then take or upload a clear photo with only you in it.
+2. Take a fresh photo or upload a different one. The demo compares it with your first photo automatically.
+3. If the faces match, download your attendance CSV. Try another check-in in the same session to see the original timestamp stay in place.
+
+The demo and desktop app record new check-ins in **Bangladesh time (Asia/Dhaka, UTC+6)**. A new attendance day starts at midnight in Bangladesh, wherever the app is running. [Host your own demo](demo/README.md)
 
 ## Follow a check-in
 

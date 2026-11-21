@@ -2,7 +2,7 @@
 
 import csv
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from io import StringIO
 from threading import BoundedSemaphore
 
@@ -10,6 +10,7 @@ import numpy as np
 
 from demo.interface_text import TEXT
 from idetectface import recognition
+from idetectface.clock import bangladesh_time
 from idetectface.images import decode_image
 
 # The shared CPU models operate on one bounded image at a time.
@@ -47,13 +48,22 @@ class Visit:
     enrollment_digest: bytes
     entries: dict[str, str] = field(default_factory=dict)
 
+    @classmethod
+    def from_utc_session(cls, previous):
+        """Keep the earliest surviving check-in on each Bangladesh date after an app update."""
+        visit = cls(previous.reference, previous.enrollment_digest)
+        for day, at in sorted(previous.entries.items()):
+            stamp = bangladesh_time(datetime.fromisoformat(f"{day}T{at}+00:00"))
+            visit.entries.setdefault(stamp.date().isoformat(), stamp.strftime("%H:%M:%S"))
+        return visit
+
     def check_in(self, vector, digest, now=None):
         if digest == self.enrollment_digest:
             raise PhotoError("same")
         distance = float(recognition.face_distance(self.reference[None, :], vector)[0])
         if not distance < 0.5:
             return "Unknown", distance
-        stamp = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        stamp = bangladesh_time(now)
         day = stamp.date().isoformat()
         if day in self.entries:
             return "Already checked in today", distance

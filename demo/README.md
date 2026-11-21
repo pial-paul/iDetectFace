@@ -6,11 +6,11 @@ Open the [live demo](https://idetectface.streamlit.app/) and choose English or à
 
 1. **Add your first photo.** Take a clear picture of yourself or choose the upload option. The app confirms it found one face and advances automatically.
 2. **Add a second photo.** Take a fresh picture or upload a different photo of yourself. The app compares it with your first photo.
-3. **Read your result.** A match records your first check-in time for that UTC day. Download the CSV or try again to see daily duplicate prevention. Expand the match explanation to see the measured distance. Clear the session when finished.
+3. **Read your result.** A match records your first check-in time for that Bangladesh calendar day (UTC+6). Download the CSV or try again to see daily duplicate prevention. Expand the match explanation to see the measured distance. Clear the session when finished.
 
 ## Hosting
 
-The demo uses the desktop project's dlib detector, five-point landmark model, 128-dimensional encoding and strict 0.5 distance threshold. Visitors take snapshots or upload two photos of themselves. The server processes photos in memory and gives each browser session its own reference embedding and UTC attendance register. Download the CSV before clearing the session. The desktop application supports continuous webcam recognition and persistent local records.
+The demo uses the desktop project's dlib detector, five-point landmark model, 128-dimensional encoding and strict 0.5 distance threshold. Visitors take snapshots or upload two photos of themselves. The server processes photos in memory and gives each browser session its own reference embedding and Bangladesh-time attendance register. Download the CSV before clearing the session. The desktop application supports continuous webcam recognition and persistent local records.
 
 1. Open the [prefilled deployment form](https://share.streamlit.io/deploy?repository=pial-paul%2FiDetectFace&branch=main&mainModule=demo%2Fstreamlit_app.py), sign in to Streamlit Community Cloud and connect your GitHub account.
 2. Select **Create app**, then **Yup, I have an app**. Select repository `pial-paul/iDetectFace`, branch `main`, and entrypoint `demo/streamlit_app.py`.

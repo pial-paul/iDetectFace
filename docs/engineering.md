@@ -30,7 +30,7 @@ sequenceDiagram
     participant Camera
     participant Log as AttendanceLog
     participant File as Local register
-    Camera->>Log: Mark ID at local observation time
+    Camera->>Log: Mark ID at Bangladesh observation time
     Note over Camera,File: An unchanged last sighting returns after a file metadata check.
     Log->>File: Acquire OS-backed lock for other sightings
     Log->>File: Check file identity, size and modification time
@@ -53,10 +53,12 @@ For **G** gallery images, one face requires **G** embedding distances of dimensi
 
 ## Run and maintain a pilot
 
+New check-ins and the “today” report use Asia/Dhaka. Older desktop CSV files have no timezone metadata, so their saved timestamps are read as written.
+
 1. Use a private local data folder. Ask each participant to opt in and assign a unique ID. Names that differ only in case or normalized whitespace refer to one identity. A local account with write access can alter both portraits and attendance.
 2. For migration, back up existing files privately before switching branches. Run `records --all` against the chosen data directory and compare totals and timestamps with the original CSV. Re-enroll any gallery image reported as corrupt or containing zero or multiple faces. Legacy CSVs use UTF-8 or the host's default text encoding. Convert a copy to UTF-8 when moving a legacy register between code pages.
 3. A camera-open error calls for checking OS camera permissions, closing other capture apps, and trying another `--camera` index. A HighGUI error usually calls for a fresh virtual environment with the desktop OpenCV wheel. The inference adapter locates model data through Python distribution metadata and loads only the detector, five-point landmark predictor and descriptor model.
 4. Stop capture before correcting a row or removing a portrait. Keep the minimum necessary data, cover backup copies in the retention plan, and restart capture after changing the gallery. Application-level authentication, encryption and verification of physical presence would require additional controls.
-5. Complete the [physical-camera and held-out evaluation](evaluation.md) before making a pilot accuracy claim. For multiple locations, first measure gallery size, concurrent write rate and report latency. If local files become a bottleneck, introduce a database with a unique constraint on participant ID and local date, then test imports against existing registers.
+5. Complete the [physical-camera and held-out evaluation](evaluation.md) before making a pilot accuracy claim. For multiple locations, first measure gallery size, concurrent write rate and report latency. If local files become a bottleneck, introduce a database with a unique constraint on participant ID and Bangladesh date, then test imports against existing registers.
 
 The local file design fits a supervised single-workstation prototype. A missing check-in alone cannot establish that someone was absent.

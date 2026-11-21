@@ -2,7 +2,6 @@
 
 import os
 from contextlib import contextmanager
-from datetime import datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import NamedTuple, Optional
@@ -12,6 +11,7 @@ import numpy as np
 from filelock import FileLock
 
 from . import recognition as faces
+from .clock import bangladesh_time
 from .identity import enrollment_stem, identity_key, validate_label
 from .images import IMAGE_SUFFIXES, read_image
 
@@ -188,7 +188,7 @@ def run(directory, log, index, threshold, every):
         overlays = []
         while True:
             frame = read_frame(cap)
-            now = datetime.now()
+            now = bangladesh_time()
             if frame_number % every == 0:
                 overlays = []
                 for match in gallery.recognize(frame, threshold):
@@ -205,7 +205,7 @@ def run(directory, log, index, threshold, every):
                 color = (70, 190, 110) if match.name is not None else (25, 160, 255)
                 cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
                 label(frame, caption, (left, max(18, top - 5)), color)
-            label(frame, f"{now:%Y-%m-%d %H:%M:%S} | q to finish", (10, frame.shape[0] - 12))
+            label(frame, f"{now:%Y-%m-%d %H:%M:%S} BDT | q to finish", (10, frame.shape[0] - 12))
             cv2.imshow("Face Recognition Attendance", frame)
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 return

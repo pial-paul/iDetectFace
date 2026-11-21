@@ -3,3 +3,4 @@ dlib-bin==20.0.1.post1
 face-recognition-models==0.3.0
 numpy==2.2.6
 pillow==13.0.0
+tzdata==2026.6

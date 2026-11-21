@@ -8,6 +8,7 @@ from itertools import groupby
 from pathlib import Path
 
 from idetectface.attendance import AttendanceLog
+from idetectface.clock import bangladesh_time
 
 
 def iso_day(value):
@@ -62,7 +63,7 @@ def menu(args, log):
             elif choice == "3":
                 scope = input("1. Today  2. By date  3. All records: ").strip()
                 if scope == "1":
-                    report(log, date.today())
+                    report(log, bangladesh_time().date())
                 elif scope == "2":
                     report(log, iso_day(input("Date (YYYY-MM-DD): ").strip()))
                 elif scope == "3":
@@ -106,7 +107,7 @@ def main(argv=None):
     try:
         log = AttendanceLog(args.data_dir / "attendance.csv")
         if args.command == "records":
-            report(log, None if args.all else args.date or date.today())
+            report(log, None if args.all else args.date or bangladesh_time().date())
         elif args.command == "run":
             run_camera_action(args, log)
         elif args.command == "enroll":

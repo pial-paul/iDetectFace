@@ -11,6 +11,7 @@ from typing import Iterator, NamedTuple, Optional
 
 from filelock import FileLock
 
+from .clock import bangladesh_time
 from .identity import identity_key, validate_label
 
 
@@ -82,9 +83,9 @@ class AttendanceLog:
             return self._select(day.isoformat() if day else None)
 
     def mark(self, name: str, now: Optional[datetime] = None) -> bool:
-        """Return True only for the first accepted write for an identity and local day."""
+        """Return True only for the first accepted write for an identity on a Bangladesh date."""
         validate_label(name)
-        now = now or datetime.now()
+        now = bangladesh_time(now)
         day = now.date().isoformat()
         key = identity_key(name)
         # A repeat of the last committed sighting is read-only. Any date or

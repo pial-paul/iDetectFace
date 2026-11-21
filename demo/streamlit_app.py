@@ -65,7 +65,7 @@ def photo_step(copy, visit):
         with st.spinner(copy["working" if first else "comparing"]):
             vector, digest = encode_photo(photo.getvalue())
         if first:
-            st.session_state.visit = Visit(vector, digest)
+            st.session_state.visit_bd = Visit(vector, digest)
         else:
             st.session_state.result = visit.check_in(vector, digest)
     except PhotoError as error:
@@ -112,7 +112,9 @@ if not st.session_state.get("consented"):
         st.rerun()
     show_match_details(copy)
 else:
-    visit = st.session_state.get("visit")
+    if "visit" in st.session_state:
+        st.session_state.visit_bd = Visit.from_utc_session(st.session_state.pop("visit"))
+    visit = st.session_state.get("visit_bd")
     result = st.session_state.get("result")
     if visit is not None and result is not None:
         result_step(copy, visit, result)

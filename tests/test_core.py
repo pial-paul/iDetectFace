@@ -33,6 +33,24 @@ class RegisterTests(unittest.TestCase):
         self.assertTrue(self.log.mark("demo 01", DAY + timedelta(seconds=1)))
         self.assertEqual(self.log.records(DAY.date()), [("Demo 01", "2025-03-09", "23:59:59")])
 
+    def test_utc_observations_and_today_report_follow_dhaka_midnight(self):
+        before = datetime.fromisoformat("2025-12-31T17:59:59+00:00")
+        after = before + timedelta(seconds=1)
+        self.assertTrue(self.log.mark("Demo", before))
+        self.assertTrue(self.log.mark("Demo", after))
+        self.assertFalse(self.log.mark("Demo", after + timedelta(hours=6)))
+        from idetectface.clock import bangladesh_time
+
+        output = io.StringIO()
+        with (
+            patch("idetectface.cli.bangladesh_time", return_value=bangladesh_time(after)),
+            redirect_stdout(output),
+        ):
+            self.assertEqual(main(["--data-dir", str(self.path.parent), "records"]), 0)
+        self.assertIn("2026-01-01  |  1 present", output.getvalue())
+        self.assertIn("00:00:00  Demo", output.getvalue())
+        self.assertNotIn("2025-12-31", output.getvalue())
+
     def test_cached_index_avoids_reopening_csv_for_duplicates(self):
         self.log.mark("Demo", DAY)
         with patch.object(self.log, "_rows", side_effect=AssertionError("unexpected scan")):
