@@ -4,7 +4,7 @@ A local webcam attendance system for a supervised lab or workshop. An organizer 
 
 **Python 3.11 · OpenCV · dlib · NumPy · local CSV**
 
-For a public portfolio demo with browser camera capture and CSV download, follow the [free Streamlit deployment guide](demo/README.md).
+Try the [live photo check-in](https://idetectface.streamlit.app/) in English or বাংলা. Give it one photo of yourself and a second photo to check in, then download your attendance. To host your own copy, follow the [free Streamlit deployment guide](demo/README.md).
 
 ## Follow a check-in
 

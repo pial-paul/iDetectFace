@@ -1,4 +1,4 @@
-"""Streamlit Community Cloud entry point, launched from the repository root."""
+"""Streamlit entry point for the guided two-photo check-in."""
 
 import sys
 from pathlib import Path
@@ -8,76 +8,114 @@ import streamlit as st
 repo_root = str(Path(__file__).resolve().parents[1])
 if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
-from demo.session import Visit, encode_photo  # noqa: E402
-
-st.set_page_config(page_title="iDetectFace · Webcam check-in", layout="centered")
-st.title("iDetectFace")
-st.write("Enroll with one photo, then use a second photo to check yourself in.")
-st.caption(
-    "The server processes your photos. The demo keeps your face embedding and UTC check-ins in session memory. Use only your own photos."
-)
+from demo.interface_text import TEXT  # noqa: E402
+from demo.session import PhotoError, Visit, encode_photo  # noqa: E402
 
 
-def reset():
-    st.session_state.clear()
+def clear_visit():
+    for key in list(st.session_state):
+        if key != "ui_language":
+            del st.session_state[key]
 
 
-def clear_result():
+def new_capture():
     st.session_state.pop("result", None)
+    st.session_state.pop("photo_error", None)
+    st.session_state.capture_number = st.session_state.get("capture_number", 0) + 1
 
 
-if not st.checkbox("I agree to process my photos for this demo.", key="consent"):
-    st.session_state.pop("visit", None)
-    st.session_state.pop("result", None)
-    st.stop()
+def show_match_details(copy, result=None):
+    with st.expander(copy["explain"]):
+        st.write(copy["explanation"])
+        if result is not None:
+            st.write(f"{copy['score']} · {result[1]:.4f}")
 
-visit = st.session_state.get("visit")
-enrolling = visit is None
-stage = "enroll" if enrolling else "check"
-st.subheader("Enroll yourself" if enrolling else "Check in")
-source = st.radio(
-    "Photo source",
-    ["Camera", "Upload"],
-    horizontal=True,
-    key=f"source_{stage}",
-    on_change=clear_result,
-)
-if source == "Camera":
-    photo = st.camera_input("Take a photo", key=f"camera_{stage}", on_change=clear_result)
-else:
-    photo = st.file_uploader(
-        "Choose a JPEG or PNG",
-        type=["jpg", "jpeg", "png"],
-        key=f"upload_{stage}",
-        on_change=clear_result,
+
+def photo_step(copy, visit):
+    first = visit is None
+    if not first:
+        st.success(copy["ready"])
+    st.subheader(copy["first" if first else "second"])
+    st.write(copy["first_hint" if first else "second_hint"])
+    if reason := st.session_state.get("photo_error"):
+        st.warning(copy[reason])
+    methods = ["camera", "upload"]
+    method = st.radio(
+        copy["method"],
+        methods,
+        index=methods.index(st.session_state.get("preferred_method", "camera")),
+        format_func=copy.__getitem__,
+        horizontal=True,
+        key="photo_method",
     )
+    st.session_state.preferred_method = method
+    widget_key = f"{method}_{st.session_state.get('capture_number', 0)}"
+    if method == "camera":
+        st.caption(copy["camera_hint"])
+        photo = st.camera_input(copy["camera_label"], key=widget_key)
+    else:
+        photo = st.file_uploader(copy["upload_label"], type=["jpg", "jpeg", "png"], key=widget_key)
+    if photo is None:
+        return
 
-if st.button("Enroll" if enrolling else "Check this photo", type="primary", disabled=photo is None):
-    st.session_state.pop("result", None)
+    # Rotate the widget after every submission so reruns and language changes
+    # cannot process a previous capture a second time.
+    new_capture()
     try:
-        with st.spinner("Processing photo…"):
+        with st.spinner(copy["working" if first else "comparing"]):
             vector, digest = encode_photo(photo.getvalue())
-        if enrolling:
+        if first:
             st.session_state.visit = Visit(vector, digest)
-            st.rerun()
-        st.session_state.result = visit.check_in(vector, digest)
-    except ValueError as error:
-        st.warning(str(error))
+        else:
+            st.session_state.result = visit.check_in(vector, digest)
+    except PhotoError as error:
+        st.session_state.photo_error = error.reason
+    st.rerun()
 
-if visit is not None:
-    result = st.session_state.get("result")
-    if result:
-        status, distance = result
-        message = f"{status} · face distance {distance:.3f}"
-        (st.warning if status == "Unknown" else st.success)(message)
-        st.caption("A distance below 0.500 accepts a match.")
+
+def result_step(copy, visit, result):
+    status, _ = result
+    st.subheader(copy["third"])
+    message = {
+        "Unknown": "unmatched",
+        "Checked in": "recorded",
+        "Already checked in today": "duplicate",
+    }
+    (st.warning if status == "Unknown" else st.success)(copy[status])
+    st.write(copy[message[status]])
     if visit.entries:
-        st.subheader("Your attendance")
-        st.table(
-            [
-                {"Participant": "visitor", "Date (UTC)": day, "First check-in (UTC)": at}
-                for day, at in visit.entries.items()
-            ]
+        st.subheader(copy["record"])
+        st.table([{copy["date"]: day, copy["time"]: at} for day, at in visit.entries.items()])
+        st.download_button(
+            copy["download"], visit.csv_text(), "demo-attendance.csv", "text/csv", on_click="ignore"
         )
-        st.download_button("Download CSV", visit.csv_text(), "demo-attendance.csv", "text/csv")
-    st.button("Clear my session", on_click=reset)
+    st.button(
+        copy["again"], type="primary" if status == "Unknown" else "secondary", on_click=new_capture
+    )
+    show_match_details(copy, result)
+
+
+st.set_page_config(page_title="iDetectFace · Photo check-in", layout="centered")
+language = st.segmented_control(
+    "Language / ভাষা", list(TEXT), default="English", key="ui_language", required=True
+)
+copy = TEXT[language]
+st.title("iDetectFace")
+st.write(copy["intro"])
+
+if not st.session_state.get("consented"):
+    st.subheader(copy["prepare"])
+    st.write(copy["overview"])
+    st.caption(copy["privacy"])
+    if st.button(copy["start"], type="primary"):
+        st.session_state.consented = True
+        st.rerun()
+    show_match_details(copy)
+else:
+    visit = st.session_state.get("visit")
+    result = st.session_state.get("result")
+    if visit is not None and result is not None:
+        result_step(copy, visit, result)
+    else:
+        photo_step(copy, visit)
+    st.button(copy["clear"], on_click=clear_visit)

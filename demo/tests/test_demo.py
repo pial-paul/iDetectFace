@@ -37,24 +37,64 @@ class DemoTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 encode_photo(data)
 
-    def test_app_enroll_check_in_export_and_reset(self):
+    def start_app(self, language):
         app = AppTest.from_file(APP).run()
-        self.assertFalse(app.exception)
         self.assertFalse(app.get("camera_input"))
-        app.checkbox[0].check().run()
-        app.radio[0].set_value("Upload").run()
+        if language == "বাংলা":
+            app.segmented_control[0].set_value(language).run()
+        app.button[0].click().run()
+        app.radio[0].set_value("upload").run()
+        return app
+
+    def test_guided_check_in_in_both_languages(self):
+        from demo.interface_text import TEXT
+
+        for language, words in TEXT.items():
+            with self.subTest(language=language):
+                app = self.start_app(language)
+                responses = [(np.zeros(128), digest) for digest in (b"a", b"b", b"b")]
+                with patch("demo.session.encode_photo", side_effect=responses) as encode:
+                    app.file_uploader[0].set_value(("one.jpg", b"a", "image/jpeg")).run()
+                    self.assertEqual(app.success[0].value, words["ready"])
+                    app.file_uploader[0].set_value(("two.jpg", b"b", "image/jpeg")).run()
+                    self.assertEqual(app.success[0].value, words["Checked in"])
+                    self.assertEqual(len(app.get("download_button")), 1)
+                    app.run()
+                    self.assertEqual(encode.call_count, 2)
+                    next(b for b in app.button if b.label == words["again"]).click().run()
+                    app.file_uploader[0].set_value(("two.jpg", b"b", "image/jpeg")).run()
+                    self.assertEqual(app.success[0].value, words["Already checked in today"])
+                    self.assertEqual(len(app.session_state["visit"].entries), 1)
+                next(b for b in app.button if b.label == words["clear"]).click().run()
+                self.assertFalse(app.exception)
+                self.assertNotIn("visit", app.session_state)
+                self.assertFalse(app.get("camera_input"))
+                self.assertEqual(app.segmented_control[0].value, language)
+
+    def test_retry_after_errors_and_language_switch(self):
+        from demo.interface_text import TEXT
+        from demo.session import PhotoError
+
+        app = self.start_app("English")
         with patch(
-            "demo.session.encode_photo", side_effect=[(np.zeros(128), b"a"), (np.zeros(128), b"b")]
-        ):
-            app.file_uploader[0].set_value(("one.jpg", b"a", "image/jpeg")).run()
-            app.button[0].click().run()
-            self.assertFalse(app.exception)
-            app.radio[0].set_value("Upload").run()
+            "demo.session.encode_photo",
+            side_effect=[
+                PhotoError("none"),
+                (np.zeros(128), b"a"),
+                (np.zeros(128), b"a"),
+                (np.ones(128), b"b"),
+            ],
+        ) as encode:
+            app.file_uploader[0].set_value(("empty.jpg", b"empty", "image/jpeg")).run()
+            self.assertEqual(app.warning[0].value, TEXT["English"]["none"])
+            app.segmented_control[0].set_value("বাংলা").run()
+            self.assertEqual(app.warning[0].value, TEXT["বাংলা"]["none"])
+            self.assertEqual(encode.call_count, 1)
+            app.radio[0].set_value("upload").run()
+            for _ in range(2):
+                app.file_uploader[0].set_value(("one.jpg", b"a", "image/jpeg")).run()
+            self.assertEqual(app.warning[0].value, TEXT["বাংলা"]["same"])
             app.file_uploader[0].set_value(("two.jpg", b"b", "image/jpeg")).run()
-            app.button[0].click().run()
-        self.assertIn("Checked in", app.success[0].value)
-        self.assertEqual(len(app.get("download_button")), 1)
-        next(b for b in app.button if b.label == "Clear my session").click().run()
-        self.assertFalse(app.exception)
-        self.assertNotIn("visit", app.session_state)
-        self.assertFalse(app.checkbox[0].value)
+            self.assertEqual(app.warning[0].value, TEXT["বাংলা"]["Unknown"])
+            self.assertFalse(app.session_state["visit"].entries)
+            self.assertFalse(app.exception)
