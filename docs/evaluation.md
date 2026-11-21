@@ -4,22 +4,22 @@
 
 From the project root, run `python -m benchmarks.duplicate_lookup`. The script creates temporary synthetic CSVs, puts one identity for the selected day in the final row, and checks that identity repeatedly. Both implementations must return “already present” on the warm-up. Each reported value is the median of seven batch durations divided by 50 checks per batch.
 
-| CSV data rows | Original serial scan, µs/check | Daily index with file lock, µs/check |
+| CSV data rows | Original scan, µs/check | Cached repeat, µs/check |
 | ---: | ---: | ---: |
-| 100 | 75.2 | 273.2 |
-| 1,000 | 443.9 | 289.6 |
-| 10,000 | 4,194.0 | 266.5 |
+| 100 | 85.6 | 21.4 |
+| 1,000 | 520.8 | 21.2 |
+| 10,000 | 4,448.7 | 17.7 |
 
-This run used Windows, an Intel Core i5-1235U, CPython 3.9.9 and filelock 3.17.0. The original column reproduces the baseline's sequential scan and early return for a duplicate. The indexed column calls `AttendanceLog.mark`. Both receive a fixed observation day. Data generation and initial index construction finish before timing starts. [Benchmark source](../benchmarks/duplicate_lookup.py)
+Measured with 64-bit CPython 3.11.13, Windows, an Intel Core i5-1235U and filelock 4.2.12. The original column reproduces the baseline's serial scan and early return. The second calls `AttendanceLog.mark` with the same last-confirmed identity. Both receive a fixed observation day. Setup, first writes, disk sync and index construction finish before timing starts. [Benchmark source](../benchmarks/duplicate_lookup.py)
 
-At 10,000 rows the median fell by **93.6%**, or about **15.7×** as many checks in the same time. The original scan wins at 100 rows. An early-row match would also favor the scan. Restarting the app, advancing the local date or observing another writer's update requires an index rebuild. Disk cache, hardware and competing processes can change these results.
+A repeat checks file metadata before returning. Alternating identities acquire the lock and consult the daily index. A concurrent write or date change triggers an index refresh. An early-row match would reduce the cost of the original scan. Disk cache, hardware and competing processes affect these figures.
 
 ## Recognition evaluation
 
 The repository includes a runner and a labeling protocol. An accuracy estimate requires separately collected, consented probe images. The published benchmark above measures storage behavior.
 
 1. Enroll consenting participants under unique IDs. Collect one-person probe photos in separate sessions with different lighting, pose and distance. Include people who opted into evaluation and have no gallery entry. Keep calibration and final test sessions separate. Count participants as well as photos, since many photos of one person provide limited independent evidence.
-2. Keep private images and manifests under `.local-data/` or outside the checkout. Prepare a UTF-8 CSV headed `image,expected`. Paths are relative to the manifest. A known label must match the loaded gallery name using spaces for filename underscores. Use `@unknown` explicitly for a person outside the gallery. Example labels and paths below are fictional.
+2. Keep private images and manifests under `.local-data/` or outside the checkout. Prepare a UTF-8 CSV headed `image,expected`. Keep probes inside the manifest directory tree. Supply relative paths to regular JPEG or PNG files up to 16 MiB and 16 megapixels each. A known label must match the loaded gallery name using spaces for filename underscores. Use `@unknown` explicitly for a person outside the gallery. Example labels and paths below are fictional.
 
    ```csv
    image,expected

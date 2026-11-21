@@ -2,7 +2,7 @@
 
 A local webcam attendance system for a supervised lab or workshop. An organizer enrolls a participant with one portrait. When the camera recognizes them, the register keeps the timestamp of their first accepted sighting that day. Reappearing later leaves the original check-in time intact.
 
-**Python · OpenCV · dlib · face_recognition · NumPy**
+**Python 3.11 · OpenCV · dlib · NumPy · local CSV**
 
 ## Follow a check-in
 
@@ -13,7 +13,7 @@ flowchart LR
     F --> D["Detect faces<br/>encode each face"]
     G --> M["Nearest Euclidean distance"]
     D --> M
-    M -->|"Below threshold"| A["Check identity + local date<br/>under a file lock"]
+    M -->|"Below threshold"| A["Check cached sighting<br/>or acquire register lock"]
     M -->|"Outside threshold"| U["Show Unknown"]
     A -->|"First sighting"| W["Append Name,Date,Time"]
     A -->|"Already present"| S["Show present"]
@@ -24,27 +24,26 @@ The camera processes every second frame by default and reuses the last boxes bet
 
 ## Run it locally
 
-1. Open a terminal in the project checkout. Create a virtual environment with a 64-bit Python interpreter. The clean Windows installation below was verified with Python 3.9.9. The CI workflow targets Python 3.11.
+1. Clone the repository and create a virtual environment with **64-bit CPython 3.11**. Use `py -3.11` on Windows or `python3.11` on Linux and macOS for the environment creation command. The full CI matrix covers Windows and Ubuntu.
 
    ```sh
-   python -m venv .venv
+   git clone https://github.com/pial-paul/iDetectFace.git
+   cd iDetectFace
+   python3.11 -m venv .venv
    ```
 
-2. Activate it with `.\.venv\Scripts\Activate.ps1` in PowerShell or `source .venv/bin/activate` on Linux and macOS. Install the desktop dependencies.
+2. Activate with `.\.venv\Scripts\Activate.ps1` in PowerShell or `source .venv/bin/activate` in a POSIX shell. Install the hash-locked runtime, then the application.
 
    ```sh
    python -m pip install --upgrade pip
-   python -m pip install -r requirements.txt
+   python -m pip install --require-hashes -r requirements.txt
+   python -m pip install --no-deps .
    python -m pip check
    ```
 
-   If pip needs to build dlib, install CMake and a C++ compiler first. On Windows, use Visual Studio Build Tools with the **Desktop development with C++** workload. Use one OpenCV wheel per environment. A headless wheel omits the preview windows. [dlib build instructions](https://dlib.net/compile.html) · [OpenCV wheel selection](https://pypi.org/project/opencv-python/)
+   The desktop OpenCV and community-built dlib wheels provide the native libraries. Use one OpenCV wheel per environment. Models download at installation time and recognition runs locally. [dlib wheel build project](https://github.com/alesanfra/dlib-wheels) · [OpenCV wheel selection](https://pypi.org/project/opencv-python/)
 
-3. Start a private demo register. Choose **2** to enroll a consenting participant under a unique ID such as `demo-01`. With exactly one face in view, press **Space** to save or **Esc** to cancel. Choose **1** to start attendance and press **q** in the preview to finish. Choose **3** to view today, a specific day, or all days.
-
-   ```sh
-   python opencv_attendance.py --data-dir .local-data
-   ```
+3. Start the menu with `idetectface --data-dir .local-data`. Choose **2** to enroll a consenting participant under a unique ID such as `demo-01`. With exactly one face in view, press **Space** to save or **Esc** to cancel. Choose **1** to start attendance and press **q** in the preview to finish. Choose **3** to view today, a specific day, or all days.
 
 The original `python opencv_attendance.py` menu still uses `known_faces/` and `attendance.csv` in the current directory. Point `--data-dir` at an existing register to use its original `Name,Date,Time` rows and JPG, JPEG or PNG enrollment files. New registers create the CSV on the first check-in.
 
@@ -60,9 +59,9 @@ python opencv_attendance.py --data-dir .local-data records --all
 
 ## What the benchmark shows
 
-![Duplicate lookup times at three CSV sizes. At 100 rows the original scan is faster. At 10,000 rows the scan takes 4.194 ms and the daily index takes 0.267 ms.](docs/duplicate-check.png)
+![Median duplicate lookup time at three CSV sizes. At 10,000 rows the serial scan took 4,448.7 microseconds and the cached repeat took 17.7 microseconds.](docs/duplicate-check.png)
 
-At 10,000 synthetic rows, median time per repeated check fell from **4.194 ms to 0.267 ms** on one Windows laptop. At 100 rows, the file lock made the indexed path slower. The benchmark isolates a warm lookup with a match in the last row. Camera capture, detection and first-time writes are outside the timing. [Method, exact values and reproduction steps](docs/evaluation.md)
+On one Windows machine, a repeat of the last recorded identity in a 10,000-row synthetic log took **17.7 µs** per check, compared with **4,448.7 µs** for a match at the end of the original sequential scan. The fast path checks that the register and local date still match the cached sighting. Camera inference, alternating identities and first writes fall outside this measurement. [Method, exact values and reproduction steps](docs/evaluation.md)
 
 ```sh
 python -m unittest discover -s tests -v
@@ -82,3 +81,8 @@ Portraits and the CSV are ordinary local files. Restrict access to the data dire
 - [Engineering review](docs/engineering.md) covers the original defects, design changes, failure handling and next implementation priorities.
 - [Evaluation protocol](docs/evaluation.md) covers storage latency, recognition errors and a physical-camera acceptance check.
 - [Portfolio descriptions](docs/portfolio.md) contains résumé bullets for software engineering and research applications.
+
+- [Security and private data](SECURITY.md) describes the local trust boundary and how to report an issue.
+- [Contributor guide](CONTRIBUTING.md) includes packaging, lint, tests and dependency auditing.
+
+Project code is distributed under the [MIT License](LICENSE). Model files and dependencies retain their upstream terms. [Model provenance](https://pypi.org/project/face-recognition-models/)
